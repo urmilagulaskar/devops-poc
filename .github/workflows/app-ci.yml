@@ -1,1 +1,43 @@
-name: Application CI
+name: Application CI pipeline
+
+on:
+ #remove push action trigger for aws-ci branch before creating pull request on develop branch
+  push:
+    branches: [ aws-ci ]
+  pull_request:
+    branches: [ develop ]
+
+jobs:
+  build_and_test:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 3.1.301
+    
+    - name: Install dependencies
+      run: dotnet restore
+    
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+    
+    - name: Add dotnet packages
+      if: ${{ success() }}
+      run: |
+        find ./ -name *UnitTests.csproj -execdir dotnet add package coverlet.msbuild \;
+        find ./ -name *UnitTests.csproj -execdir dotnet add package FluentAssertions \;
+    
+    - name: Run unit testcases
+      if: ${{ success() }}
+      run: |
+        dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover --logger trx --no-restore --verbosity normal
+    
+    - name: Generate report
+      if: ${{ success() }}
+      run: |
+        dotnet tool install -g dotnet-reportgenerator-globaltool 
+        ~/.dotnet/tools/reportgenerator "-reports:./Tests/*UnitTests/coverage.opencover.xml" "-targetdir:./CodeCoverage" "-reporttypes:HtmlInline_AzurePipelines;Cobertura"
